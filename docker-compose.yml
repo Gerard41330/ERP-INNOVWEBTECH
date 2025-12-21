@@ -1,0 +1,78 @@
+version: "3.8"
+
+services:
+  # 1. Service Base de Données (MySQL 8)
+  database:
+    image: mysql:8.0
+    container_name: erp_database
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: erp_innovwebtech
+      MYSQL_USER: app_user
+      MYSQL_PASSWORD: app_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql # Pour la persistance des données
+    command: --default-authentication-plugin=mysql_native_password
+    networks:
+      - erp_network
+
+  # 2. Service Backend PHP-FPM (Symfony 7)
+  php:
+    image: php:8.2-fpm-alpine # Image PHP officielle, plus stable
+    container_name: erp_php
+    volumes:
+      - ./api:/app # Montage du code Symfony
+    networks:
+      - erp_network
+    depends_on:
+      - database
+
+  # 3. Serveur Web (Nginx) pour l'API
+  # ⚠️ Utilise le Dockerfile dans 'docker/nginx/' pour copier la config et éviter les erreurs de montage sur Windows
+  nginx:
+    build:
+      context: ./docker/nginx # Point d'entrée pour le Dockerfile Nginx
+    container_name: erp_nginx
+    ports:
+      - "8000:80" # API accessible sur http://localhost:8000
+    volumes:
+      - ./api:/app # Seul le code de l'API est monté ici
+    depends_on:
+      - php
+    networks:
+      - erp_network
+
+  # 4. Service Frontend (React + Vite)
+  client:
+    image: node:20-alpine
+    container_name: erp_client
+    working_dir: /app
+    ports:
+      - "5173:5173" # Front accessible sur http://localhost:5173
+    volumes:
+      - ./client:/app # Montage du code React
+      - /app/node_modules # Isolation des modules node pour éviter les conflits OS
+    command: sh -c "npm install && npm run dev -- --host"
+    networks:
+      - erp_network
+
+  # 5. Gestionnaire de Base de Données (phpMyAdmin)
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: erp_pma
+    environment:
+      PMA_HOST: database
+      PMA_USER: app_user
+      PMA_PASSWORD: app_password
+    ports:
+      - "8080:80"
+    networks:
+      - erp_network
+
+volumes:
+  db_data:
+
+networks:
+  erp_network:
